@@ -1,273 +1,343 @@
-import React, { useState } from "react";
+import { useState, useCallback } from "react";
 import "../styles/ColorPaletteGenerator.css";
+import { generateRandomPalette } from "../utils/colorUtils.js";
+import { generateHarmony } from "../utils/colorHarmonies.js";
+import {
+  simulateProtanopia,
+  simulateDeuteranopia,
+  simulateTritanopia,
+  simulateAchromatopsia,
+} from "../utils/colorBlindness.js";
+import { useLocalStorage } from "../hooks/useLocalStorage.js";
+import { useToast } from "../hooks/useToast.js";
 
-const colorNameToHex = {
-    red: "#FF0000",
-    blue: "#0000FF",
-    green: "#008000",
-    yellow: "#FFFF00",
-    black: "#000000",
-    white: "#FFFFFF",
-    cyan: "#00FFFF",
-    magenta: "#FF00FF",
-    gray: "#808080",
-    silver: "#C0C0C0",
-    maroon: "#800000",
-    olive: "#808000",
-    lime: "#00FF00",
-    navy: "#000080",
-    teal: "#008080",
-    aqua: "#00FFFF",
-    fuchsia: "#FF00FF",
-    purple: "#800080",
-    orange: "#FFA500",
-    pink: "#FFC0CB",
-    brown: "#A52A2A",
-    beige: "#F5F5DC",
-    coral: "#FF7F50",
-    gold: "#FFD700",
-    khaki: "#F0E68C",
-    lavender: "#E6E6FA",
-    lightblue: "#ADD8E6",
-    lightgreen: "#90EE90",
-    lightgray: "#D3D3D3",
-    lightpink: "#FFB6C1",
-    lightyellow: "#FFFFE0",
-    salmon: "#FA8072",
-    sandybrown: "#F4A460",
-    seashell: "#FFF5EE",
-    skyblue: "#87CEEB",
-    tan: "#D2B48C",
-    tomato: "#FF6347",
-    wheat: "#F5DEB3",
-    indigo: "#4B0082",
-    violet: "#8A2BE2",
-    plum: "#DDA0DD",
-    orchid: "#DA70D6",
-    chocolate: "#D2691E",
-    peru: "#CD853F",
-    mediumslateblue: "#7B68EE",
-    mediumvioletred: "#C71585",
-    mediumseagreen: "#3CB371",
-    midnightblue: "#191970",
-    steelblue: "#4682B4",
-    slategray: "#708090",
-    darkolivegreen: "#556B2F",
-    darkorange: "#FF8C00",
-    darkviolet: "#9400D3",
-    darkred: "#8B0000",
-    darkturquoise: "#00CED1",
-    darkslateblue: "#483D8B",
-    lightcoral: "#F08080",
-    lightseagreen: "#20B2AA",
-    lightsteelblue: "#B0C4DE",
-    lightsalmon: "#FFA07A",
-    lightgoldenrodyellow: "#FAFAD2",
-    lightcyan: "#E0FFFF",
-    lightgray: "#D3D3D3",
-    lightgreen: "#90EE90",
-    lightpink: "#FFB6C1",
-    lightyellow: "#FFFFE0",
-    linen: "#FAF0E6",
-    magenta: "#FF00FF",
-    mediumaquamarine: "#66CDAA",
-    mediumblue: "#0000CD",
-    mediumorchid: "#BA55D3",
-    mediumturquoise: "#48D1CC",
-    mediumvioletred: "#C71585",
-    midnightblue: "#191970",
-    mintcream: "#F5FFFA",
-    mistyrose: "#FFE4E1",
-    moccasin: "#FFE4B5",
-    navajowhite: "#FFDEAD",
-    oldlace: "#FDF5E6",
-    olive: "#808000",
-    olivedrab: "#6B8E23",
-    papayawhip: "#FFEFD5",
-    peachpuff: "#FFDAB9",
-    peru: "#CD853F",
-    pink: "#FFC0CB",
-    plum: "#DDA0DD",
-    powderblue: "#B0E0E6",
-    rosybrown: "#BC8F8F",
-    royalblue: "#4169E1",
-    saddlebrown: "#8B4513",
-    salmon: "#FA8072",
-    sandybrown: "#F4A460",
-    seagreen: "#2E8B57",
-    seashell: "#FFF5EE",
-    sienna: "#A0522D",
-    skyblue: "#87CEEB",
-    slateblue: "#6A5ACD",
-    slategray: "#708090",
-    snow: "#FFFAFA",
-    springgreen: "#00FF7F",
-    steelblue: "#4682B4",
-    tan: "#D2B48C",
-    thistle: "#D8BFD8",
-    tomato: "#FF6347",
-    turquoise: "#40E0D0",
-    violet: "#EE82EE",
-    wheat: "#F5DEB3",
-    white: "#FFFFFF",
-    yellow: "#FFFF00",
-    yellowgreen: "#9ACD32"
-  };
-  
+import NavBar from "./NavBar.jsx";
+import ColorPicker from "./ColorPicker.jsx";
+import HarmonySelector from "./HarmonySelector.jsx";
+import ColorSwatch from "./ColorSwatch.jsx";
+import ShadeLadder from "./ShadeLadder.jsx";
+import PreviewPanel from "./PreviewPanel.jsx";
+import ContrastChecker from "./ContrastChecker.jsx";
+import ExportPanel from "./ExportPanel.jsx";
+import SavedPalettes from "./SavedPalettes.jsx";
+import PaletteHistory from "./PaletteHistory.jsx";
+import ThemeTemplates from "./ThemeTemplates.jsx";
+import ColorBlindnessSim from "./ColorBlindnessSim.jsx";
+import Toast from "./Toast.jsx";
+
+const cbSimulators = {
+  protanopia: simulateProtanopia,
+  deuteranopia: simulateDeuteranopia,
+  tritanopia: simulateTritanopia,
+  achromatopsia: simulateAchromatopsia,
+};
+
+function applyCBMode(color, mode) {
+  if (!mode || !cbSimulators[mode]) return color;
+  return cbSimulators[mode](color);
+}
 
 function ColorPaletteGenerator() {
-  const [generationType, setGenerationType] = useState("random");
-  const [colorType, setColorType] = useState("hex");
-  const [colorInput, setColorInput] = useState("");
-  const [colors, setColors] = useState([]);
+  const [activeSection, setActiveSection] = useState("generator");
+  const [generationMode, setGenerationMode] = useState("custom");
+  const [harmonyType, setHarmonyType] = useState("complementary");
+  const [baseColor, setBaseColor] = useState("#3B82F6");
+  const [palette, setPalette] = useState([]);
+  const [lockedColors, setLockedColors] = useState({});
+  const [showShadeLadder, setShowShadeLadder] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [colorBlindMode, setColorBlindMode] = useState(null);
+  const [savedPalettes, setSavedPalettes] = useLocalStorage("savedPalettes", []);
+  const [history, setHistory] = useLocalStorage("paletteHistory", []);
+  const { toasts, addToast, removeToast } = useToast();
 
-  const handleGenerationTypeChange = (e) => {
-    setGenerationType(e.target.value);
-  };
+  const generatePalette = useCallback(() => {
+    let newPalette;
 
-  const handleColorTypeChange = (e) => {
-    setColorType(e.target.value);
-  };
-
-  const handleColorInputChange = (e) => {
-    setColorInput(e.target.value);
-  };
-
-  const generatePalette = () => {
-    let generatedColors = [];
-
-    if (generationType === "custom") {
-      if (colorType === "hex" && isValidHex(colorInput)) {
-        generatedColors = generateColors(colorInput, 10, 30);
-      } else if (colorType === "name") {
-        const hexColor = colorNameToHex[colorInput.toLowerCase()];
-        if (hexColor) {
-          generatedColors = generateColors(hexColor, 10, 30);
-        } else {
-          alert(
-            `Invalid color name: ${colorInput}. Please provide a valid color name.`
-          );
-          return;
-        }
-      } else {
-        alert(
-          "Invalid color input. Please provide a valid HEX code or Color Name."
-        );
-        return;
-      }
-    } else if (generationType === "random") {
-      generatedColors = generateRandomPalette(10);
+    if (generationMode === "random") {
+      newPalette = generateRandomPalette(5);
+    } else {
+      newPalette = generateHarmony(baseColor, harmonyType);
     }
 
-    setColors(generatedColors);
-  };
-
-  const isValidHex = (hex) => /^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(hex);
-
-  const generateColors = (baseColor, count, variation) => {
-    const colors = [];
-    for (let i = 0; i < count; i++) {
-      let color = lightenDarkenColor(baseColor, i * variation);
-      colors.push(color);
-    }
-    return colors;
-  };
-
-  const generateRandomPalette = (count) => {
-    const colors = [];
-    for (let i = 0; i < count; i++) {
-      const randomColor = getRandomColor();
-      colors.push(randomColor);
-    }
-    return colors;
-  };
-
-  const getRandomColor = () => {
-    const letters = "0123456789ABCDEF";
-    let color = "#";
-    for (let i = 0; i < 6; i++) {
-      color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
-  };
-
-  const lightenDarkenColor = (col, amt) => {
-    let usePound = false;
-
-    if (col[0] === "#") {
-      col = col.slice(1);
-      usePound = true;
-    }
-
-    let num = parseInt(col, 16);
-
-    let r = (num >> 16) + amt;
-    if (r > 255) r = 255;
-    else if (r < 0) r = 0;
-
-    let g = ((num >> 8) & 0x00ff) + amt;
-    if (g > 255) g = 255;
-    else if (g < 0) g = 0;
-
-    let b = (num & 0x0000ff) + amt;
-    if (b > 255) b = 255;
-    else if (b < 0) b = 0;
-
-    return (
-      (usePound ? "#" : "") +
-      ((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")
+    const merged = palette.map((color, i) =>
+      lockedColors[i] ? color : newPalette[i] || newPalette[0],
     );
-  };
 
-  const copyToClipboard = (color) => {
-    navigator.clipboard.writeText(color).then(() => {
-      alert(`${color} copied to clipboard`);
+    while (merged.length < newPalette.length) {
+      merged.push(newPalette[merged.length]);
+    }
+
+    const result = merged.slice(0, newPalette.length);
+    setPalette(result);
+    setLockedColors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        if (Number(k) >= result.length) delete next[k];
+      });
+      return next;
     });
-  };
+
+    setHistory((prev) => {
+      const entry = {
+        colors: result,
+        harmony: generationMode === "custom" ? harmonyType : "random",
+        type: generationMode,
+        timestamp: Date.now(),
+      };
+      return [...prev, entry].slice(-50);
+    });
+  }, [generationMode, harmonyType, baseColor, lockedColors, palette, setHistory]);
+
+  const handleCopy = useCallback(
+    async (value, format) => {
+      try {
+        await navigator.clipboard.writeText(value);
+        addToast(`Copied ${format} to clipboard`, "success");
+      } catch {
+        addToast("Failed to copy to clipboard", "error");
+      }
+    },
+    [addToast],
+  );
+
+  const toggleLock = useCallback((index) => {
+    setLockedColors((prev) => {
+      const next = { ...prev };
+      if (next[index]) {
+        delete next[index];
+      } else {
+        next[index] = true;
+      }
+      return next;
+    });
+  }, []);
+
+  const saveCurrentPalette = useCallback(() => {
+    if (palette.length === 0) return;
+    const name = `Palette ${savedPalettes.length + 1}`;
+    setSavedPalettes((prev) => [
+      ...prev,
+      {
+        colors: palette,
+        harmony: generationMode === "custom" ? harmonyType : "random",
+        name,
+        savedAt: Date.now(),
+      },
+    ]);
+    addToast("Palette saved!", "success");
+  }, [palette, generationMode, harmonyType, savedPalettes, setSavedPalettes, addToast]);
+
+  const loadSavedPalette = useCallback(
+    (colors) => {
+      setPalette(colors);
+      setLockedColors({});
+      setActiveSection("generator");
+      addToast("Palette loaded", "info");
+    },
+    [addToast],
+  );
+
+  const deleteSavedPalette = useCallback(
+    (index) => {
+      setSavedPalettes((prev) => prev.filter((_, i) => i !== index));
+      addToast("Palette deleted", "info");
+    },
+    [setSavedPalettes, addToast],
+  );
+
+  const restoreHistory = useCallback(
+    (entry) => {
+      setPalette(entry.colors);
+      setLockedColors({});
+      if (entry.type === "custom" && entry.harmony) {
+        setHarmonyType(entry.harmony);
+      }
+      setActiveSection("generator");
+      addToast("Restored from history", "info");
+    },
+    [addToast],
+  );
+
+  const loadTemplate = useCallback(
+    (colors) => {
+      setPalette(colors);
+      setLockedColors({});
+      setGenerationMode("custom");
+      setActiveSection("generator");
+      addToast("Theme loaded", "success");
+    },
+    [addToast],
+  );
+
+  const displayPalette = colorBlindMode
+    ? palette.map((c) => applyCBMode(c, colorBlindMode))
+    : palette;
+
+  const renderGenerator = () => (
+    <div className="section generator-view">
+      <div className="controls-card">
+        <div className="controls-row">
+          <div className="control-group">
+            <label>Mode</label>
+            <div className="mode-toggle">
+              <button
+                className={`mode-btn ${generationMode === "custom" ? "active" : ""}`}
+                onClick={() => setGenerationMode("custom")}
+              >
+                Custom
+              </button>
+              <button
+                className={`mode-btn ${generationMode === "random" ? "active" : ""}`}
+                onClick={() => setGenerationMode("random")}
+              >
+                Random
+              </button>
+            </div>
+          </div>
+
+          {generationMode === "custom" && (
+            <>
+              <div className="control-group">
+                <label>Base Color</label>
+                <ColorPicker value={baseColor} onChange={setBaseColor} />
+              </div>
+              <div className="control-group">
+                <label>Harmony</label>
+                <HarmonySelector value={harmonyType} onChange={setHarmonyType} />
+              </div>
+            </>
+          )}
+
+          <div className="control-group control-action">
+            <label>&nbsp;</label>
+            <button className="generate-btn" onClick={generatePalette}>
+              Generate
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="palette-card">
+        <div className="palette-header">
+          <h3>
+            Palette
+            {generationMode === "custom" && harmonyType && (
+              <span className="badge-harmony">{harmonyType}</span>
+            )}
+          </h3>
+          <div className="palette-toolbar">
+            {palette.length > 0 && (
+              <>
+                <button className="toolbar-btn" onClick={saveCurrentPalette}>
+                  💾 Save
+                </button>
+                <button
+                  className={`toolbar-btn ${showShadeLadder ? "active" : ""}`}
+                  onClick={() => setShowShadeLadder((s) => !s)}
+                >
+                  📊 Shades
+                </button>
+                <button className="toolbar-btn" onClick={() => setShowExport(true)}>
+                  📦 Export
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {palette.length === 0 ? (
+          <div className="palette-empty">
+            <div className="empty-icon">🎨</div>
+            <p>Click Generate to create a palette</p>
+            <p className="empty-hint">
+              Choose a harmony type or try random mode
+            </p>
+          </div>
+        ) : (
+          <div className="palette-grid">
+            {displayPalette.map((color, i) => (
+              <ColorSwatch
+                key={`${palette[i]}-${i}`}
+                color={color}
+                locked={!!lockedColors[i]}
+                onToggleLock={() => toggleLock(i)}
+                onCopy={handleCopy}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showShadeLadder && palette.length > 0 && (
+        <ShadeLadder baseColor={displayPalette[0]} />
+      )}
+
+      {palette.length > 0 && (
+        <ColorBlindnessSim
+          palette={palette}
+          activeMode={colorBlindMode}
+          onSelectMode={setColorBlindMode}
+        />
+      )}
+    </div>
+  );
+
+  const renderThemes = () => (
+    <div className="section">
+      <ThemeTemplates onSelect={loadTemplate} />
+    </div>
+  );
+
+  const renderSaved = () => (
+    <div className="section">
+      <SavedPalettes
+        palettes={savedPalettes}
+        onLoad={loadSavedPalette}
+        onDelete={deleteSavedPalette}
+      />
+    </div>
+  );
+
+  const renderHistory = () => (
+    <div className="section">
+      <PaletteHistory history={history} onRestore={restoreHistory} />
+    </div>
+  );
+
+  const renderTools = () => (
+    <div className="section tools-view">
+      <ContrastChecker palette={displayPalette} />
+      <PreviewPanel palette={displayPalette} />
+    </div>
+  );
 
   return (
-    <div className="container">
-      <h1>Color Palette Generator</h1>
-      <div className="input-group">
-        <label htmlFor="generationType">Select Generation Type:</label>
-        <select
-          id="generationType"
-          value={generationType}
-          onChange={handleGenerationTypeChange}
-        >
-          <option value="random">Random</option>
-          <option value="custom">Custom</option>
-        </select>
-      </div>
-      {generationType === "custom" && (
-        <div className="input-group" id="customColorInput">
-          <label htmlFor="colorType">Color Type:</label>
-          <select
-            id="colorType"
-            value={colorType}
-            onChange={handleColorTypeChange}
-          >
-            <option value="hex">Hex Code</option>
-            <option value="name">Color Name</option>
-          </select>
-          <input
-            type="text"
-            id="colorInput"
-            value={colorInput}
-            onChange={handleColorInputChange}
-            placeholder="Enter color value..."
+    <div className="app-layout">
+      <NavBar activeSection={activeSection} onSelect={setActiveSection} />
+
+      <main className="main-content">
+        {activeSection === "generator" && renderGenerator()}
+        {activeSection === "themes" && renderThemes()}
+        {activeSection === "saved" && renderSaved()}
+        {activeSection === "history" && renderHistory()}
+        {activeSection === "tools" && renderTools()}
+      </main>
+
+      {showExport && (
+        <>
+          <div className="export-overlay" onClick={() => setShowExport(false)} />
+          <ExportPanel
+            palette={palette}
+            onCopy={handleCopy}
+            onClose={() => setShowExport(false)}
           />
-        </div>
+        </>
       )}
-      <button onClick={generatePalette}>Generate Palette</button>
-      <div id="paletteContainer">
-        {colors.map((color, index) => (
-          <div
-            key={index}
-            className="color-box"
-            style={{ backgroundColor: color }}
-            onClick={() => copyToClipboard(color)}
-          />
+
+      <div className="toast-container">
+        {toasts.map((t) => (
+          <Toast key={t.id} {...t} onRemove={removeToast} />
         ))}
       </div>
     </div>
